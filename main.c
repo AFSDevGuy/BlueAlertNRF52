@@ -39,10 +39,10 @@
  */
 /** @file
  *
- * @defgroup ble_sdk_app_template_main main.c
+ * @defgroup ble_sdk_app_bluealert_main main.c
  * @{
- * @ingroup ble_sdk_app_template
- * @brief Template project main file.
+ * @ingroup ble_sdk_app_bluealert
+ * @brief bluealert project main file.
  *
  * This file contains a template for creating a new application. It has the code necessary to wakeup
  * from button, advertise, get a connection restart advertising on disconnect and if no new
@@ -82,10 +82,10 @@
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2    /**< Reply when unsupported features are requested. */
 
-#define DEVICE_NAME                     "Nordic_Template"                       /**< Name of device. Will be included in the advertising data. */
-#define MANUFACTURER_NAME               "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
+#define DEVICE_NAME                     "BlueAlert"                             /**< Name of device. Will be included in the advertising data. */
+#define MANUFACTURER_NAME               "AccentureFederalServices"              /**< Manufacturer. Will be passed to Device Information Service. */
 #define APP_ADV_INTERVAL                300                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
-#define APP_ADV_TIMEOUT_IN_SECONDS      180                                     /**< The advertising timeout in units of seconds. */
+#define APP_ADV_TIMEOUT_IN_SECONDS      0                                       /**< The advertising timeout in units of seconds. */
 
 #define APP_BLE_OBSERVER_PRIO           3                                       /**< Application's BLE observer priority. You shouldn't need to modify this value. */
 #define APP_BLE_CONN_CFG_TAG            1                                       /**< A tag identifying the SoftDevice BLE configuration. */
@@ -796,7 +796,7 @@ int main(void)
     peer_manager_init();
 
     // Start execution.
-    NRF_LOG_INFO("Template example started.");
+    NRF_LOG_INFO("BlueAlert started.");
     application_timers_start();
 
     advertising_start(erase_bonds);
