@@ -80,6 +80,8 @@
 #include "nrf_log_default_backends.h"
 
 #include "ble_alert.h"
+#include "alert_timer.h"
+#include "timeslot.h"
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2    /**< Reply when unsupported features are requested. */
 
@@ -119,6 +121,9 @@ static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the c
 
 static ble_alert_t m_alert;
 
+APP_TIMER_DEF(alert_timer_id);
+
+
 /* YOUR_JOB: Declare all services structure your application is using
  *  BLE_XYZ_DEF(m_xyz);
  */
@@ -131,7 +136,7 @@ static ble_uuid_t m_adv_uuids[] =
 };
 
 
-static void advertising_start(bool erase_bonds);
+static void service_advertising_start(bool erase_bonds);
 
 
 /**@brief Callback function for asserts in the SoftDevice.
@@ -149,6 +154,7 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
 {
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
+
 
 
 /**@brief Function for handling Peer Manager events.
@@ -207,7 +213,7 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
 
         case PM_EVT_PEERS_DELETE_SUCCEEDED:
         {
-            advertising_start(false);
+            service_advertising_start(false);
         } break;
 
         case PM_EVT_LOCAL_DB_CACHE_APPLY_FAILED:
@@ -267,10 +273,10 @@ static void timers_init(void)
     /* YOUR_JOB: Create any timers to be used by the application.
                  Below is an example of how to create a timer.
                  For every new timer needed, increase the value of the macro APP_TIMER_MAX_TIMERS by
-                 one.
-       ret_code_t err_code;
-       err_code = app_timer_create(&m_app_timer_id, APP_TIMER_MODE_REPEATED, timer_timeout_handler);
-       APP_ERROR_CHECK(err_code); */
+                 one.*/
+
+    err_code = app_timer_create(&alert_timer_id, APP_TIMER_MODE_REPEATED, alert_timer_timeout_handler);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -316,13 +322,13 @@ static void gatt_init(void)
 }
 
 
-/**@brief Function for handling the YYY Service events.
+/**@brief Function for handling the alert Service events.
  * YOUR_JOB implement a service handler function depending on the event the service you are using can generate
  *
  * @details This function will be called for all YY Service events which are passed to
  *          the application.
  *
- * @param[in]   p_yy_service   YY Service structure.
+ * @param[in]   p_alert_service   Alert Service structure.
  * @param[in]   p_evt          Event received from the YY Service.
  *
  */
@@ -421,10 +427,9 @@ static void conn_params_init(void)
  */
 static void application_timers_start(void)
 {
-    /* YOUR_JOB: Start your timers. below is an example of how to start a timer.
-       ret_code_t err_code;
-       err_code = app_timer_start(m_app_timer_id, TIMER_INTERVAL, NULL);
-       APP_ERROR_CHECK(err_code); */
+    ret_code_t err_code;
+    err_code = app_timer_start(alert_timer_id, ALERT_TIMER_INTERVAL, NULL);
+    APP_ERROR_CHECK(err_code);
 
 }
 
@@ -473,6 +478,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             break;
 
         default:
+            bsp_board_led_invert(1);
             break;
     }
 }
@@ -566,7 +572,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
         } break; // BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST
 
        case BLE_GATTS_EVT_WRITE:
-//             on_write(p_ble_evt);
+             ble_alert_on_ble_evt(p_ble_evt, p_context);
              break;
        default:
             // No implementation needed.
@@ -597,7 +603,7 @@ static void ble_stack_init(void)
     APP_ERROR_CHECK(err_code);
 
     // Register a handler for BLE events.
-    NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_evt_handler, NULL);
+    NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_evt_handler, &m_alert);
 }
 
 
@@ -687,10 +693,84 @@ static void bsp_event_handler(bsp_event_t event)
     }
 }
 
+#if 0
+#define NON_CONNECTABLE_ADV_INTERVAL    MSEC_TO_UNITS(100, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 
+#define APP_BEACON_INFO_LENGTH          0x17                              /**< Total length of information advertised by the Beacon. */
+#define APP_ADV_DATA_LENGTH             0x15                              /**< Length of manufacturer specific data in the advertisement. */
+#define APP_DEVICE_TYPE                 0x02                              /**< 0x02 refers to Beacon. */
+#define APP_MEASURED_RSSI               0xC3                              /**< The Beacon's measured RSSI at 1 meter distance in dBm. */
+#define APP_COMPANY_IDENTIFIER          0x0059                            /**< Company identifier for Nordic Semiconductor ASA. as per www.bluetooth.org. */
+#define APP_MAJOR_VALUE                 0x01, 0x02                        /**< Major value used to identify Beacons. */
+#define APP_MINOR_VALUE                 0x03, 0x04                        /**< Minor value used to identify Beacons. */
+#define APP_BEACON_UUID                 0x01, 0x12, 0x23, 0x34, \
+                                        0x45, 0x56, 0x67, 0x78, \
+                                        0x89, 0x9a, 0xab, 0xbc, \
+                                        0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
+
+static ble_gap_adv_params_t m_adv_params;                                 /**< Parameters to be passed to the stack when starting advertising. */
+
+static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH] =                    /**< Information advertised by the Beacon. */
+{
+    APP_DEVICE_TYPE,     // Manufacturer specific information. Specifies the device type in this
+                         // implementation.
+    APP_ADV_DATA_LENGTH, // Manufacturer specific information. Specifies the length of the
+                         // manufacturer specific data in this implementation.
+    APP_BEACON_UUID,     // 128 bit UUID value.
+    APP_MAJOR_VALUE,     // Major arbitrary value that can be used to distinguish between Beacons.
+    APP_MINOR_VALUE,     // Minor arbitrary value that can be used to distinguish between Beacons.
+    APP_MEASURED_RSSI    // Manufacturer specific information. The Beacon's measured TX power in
+                         // this implementation.
+};
+static void beacon_advertising_init(void)
+{
+    uint32_t      err_code;
+    ble_advdata_t advdata;
+    uint8_t       flags = BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED;
+
+    ble_advdata_manuf_data_t manuf_specific_data;
+
+    manuf_specific_data.company_identifier = APP_COMPANY_IDENTIFIER;
+    manuf_specific_data.data.p_data = (uint8_t *) m_beacon_info;
+    manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
+
+    // Build and set advertising data.
+    memset(&advdata, 0, sizeof(advdata));
+
+    advdata.name_type             = BLE_ADVDATA_NO_NAME;
+    advdata.flags                 = flags;
+    advdata.p_manuf_specific_data = &manuf_specific_data;
+
+    err_code = ble_advdata_set(&advdata, NULL);
+    APP_ERROR_CHECK(err_code);
+
+    // Initialize advertising parameters (used when starting advertising).
+    memset(&m_adv_params, 0, sizeof(m_adv_params));
+
+    m_adv_params.type        = BLE_GAP_ADV_TYPE_ADV_NONCONN_IND;
+    m_adv_params.p_peer_addr = NULL;    // Undirected advertisement.
+    m_adv_params.fp          = BLE_GAP_ADV_FP_ANY;
+    m_adv_params.interval    = NON_CONNECTABLE_ADV_INTERVAL;
+    m_adv_params.timeout     = 0;       // Never time out.
+}
+
+/**@brief Function for starting advertising.
+ */
+static void beacon_advertising_start(void)
+{
+    ret_code_t err_code;
+
+    err_code = sd_ble_gap_adv_start(&m_adv_params, APP_BLE_CONN_CFG_TAG);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
+    APP_ERROR_CHECK(err_code);
+}
+#endif
 /**@brief Function for initializing the Advertising functionality.
  */
-static void advertising_init(void)
+
+static void service_advertising_init(void)
 {
     ret_code_t             err_code;
     ble_advertising_init_t init;
@@ -760,7 +840,7 @@ static void power_manage(void)
 
 /**@brief Function for starting advertising.
  */
-static void advertising_start(bool erase_bonds)
+static void service_advertising_start(bool erase_bonds)
 {
     if (erase_bonds == true)
     {
@@ -774,6 +854,7 @@ static void advertising_start(bool erase_bonds)
         APP_ERROR_CHECK(err_code);
     }
 }
+
 
 
 /**@brief Function for application main entry.
@@ -790,15 +871,16 @@ int main(void)
     gap_params_init();
     gatt_init();
     services_init();
-    advertising_init();
+    service_advertising_init();
     conn_params_init();
     peer_manager_init();
+    timeslot_sd_init();
 
     // Start execution.
     NRF_LOG_INFO("BlueAlert started.");
     application_timers_start();
 
-    advertising_start(erase_bonds);
+    service_advertising_start(erase_bonds);
 
     // Enter main loop.
     for (;;)

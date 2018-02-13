@@ -79,10 +79,10 @@ extern "C" {
  * @hideinitializer
  */
 #define BLE_ALERT_DEF(_name)                                                                          \
-static ble_alert_t _name;                                                                             \
-NRF_SDH_BLE_OBSERVER(_name ## _obs,                                                                 \
+ble_alert_t _name;                                                                             \
+/* NRF_SDH_BLE_OBSERVER(_name ## _obs,                                                                 \
                      BLE_ALERT_BLE_OBSERVER_PRIO,                                                     \
-                     ble_alert_on_ble_evt, &_name)
+                     ble_alert_on_ble_evt, &_name) */
 
 extern ble_uuid_t m_alert_srv_uuid;
 

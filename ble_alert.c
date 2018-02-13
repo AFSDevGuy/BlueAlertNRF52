@@ -45,6 +45,7 @@
 #include "ble_alert.h"
 #include <string.h>
 #include "ble_srv_common.h"
+#include "alert_timer.h"
 
 
 #define INVALID_ALERT_LEVEL 255
@@ -102,13 +103,11 @@ static void on_disconnect(ble_alert_t * p_alert, ble_evt_t const * p_ble_evt)
  */
 static void on_write(ble_alert_t * p_alert, ble_evt_t const * p_ble_evt)
 {
-    if (!p_alert->is_notification_supported)
-    {
-        return;
-    }
 
     ble_gatts_evt_write_t const * p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
-
+    //TODO: filter these events a little more effectively - right now we
+    // "know" that *any* write should trigger an alert.
+    alert_sound();
     if (    (p_evt_write->handle == p_alert->alert_level_handles.cccd_handle)
         &&  (p_evt_write->len == 2))
     {
