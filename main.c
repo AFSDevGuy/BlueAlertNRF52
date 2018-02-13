@@ -331,7 +331,6 @@ static void on_alert_evt(ble_alert_t     * p_alert_service,
 {
     switch (p_evt->evt_type)
     {
-
         default:
             // No implementation needed.
             break;
@@ -352,8 +351,8 @@ static void services_init(void)
 
        alert_init.evt_handler                = on_alert_evt;
        alert_init.support_notification       = false;
-       alert_init.alert_level_char_attr_md.read_perm.lv = 1;
-       alert_init.alert_level_char_attr_md.read_perm.sm = 1;
+       BLE_GAP_CONN_SEC_MODE_SET_OPEN(&alert_init.alert_level_char_attr_md.write_perm);
+       BLE_GAP_CONN_SEC_MODE_SET_OPEN(&alert_init.alert_level_char_attr_md.read_perm);
 
 
 
@@ -478,7 +477,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     }
 }
 
-#if 0
+#if 1
 /**@brief Function for handling BLE events.
  *
  * @param[in]   p_ble_evt   Bluetooth stack event.
@@ -598,7 +597,7 @@ static void ble_stack_init(void)
     APP_ERROR_CHECK(err_code);
 
     // Register a handler for BLE events.
-    NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_alert_on_ble_evt, NULL);
+    NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_evt_handler, NULL);
 }
 
 
