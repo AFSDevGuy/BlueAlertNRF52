@@ -79,10 +79,11 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
+#include "ble_alert.h"
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2    /**< Reply when unsupported features are requested. */
 
-#define DEVICE_NAME                     "BlueAlert"                             /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                     "Alrm"                             /**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME               "AccentureFederalServices"              /**< Manufacturer. Will be passed to Device Information Service. */
 #define APP_ADV_INTERVAL                300                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
 #define APP_ADV_TIMEOUT_IN_SECONDS      0                                       /**< The advertising timeout in units of seconds. */
@@ -114,16 +115,19 @@
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
 
-static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
+static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;    /**< Handle of the current connection. */
+
+static ble_alert_t m_alert;
 
 /* YOUR_JOB: Declare all services structure your application is using
  *  BLE_XYZ_DEF(m_xyz);
  */
 
 // YOUR_JOB: Use UUIDs for service(s) used in your application.
-static ble_uuid_t m_adv_uuids[] =                                               /**< Universally unique service identifiers. */
+/**< Universally unique service identifiers. */
+static ble_uuid_t m_adv_uuids[] =
 {
-    {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}
+    {0,0}
 };
 
 
@@ -288,9 +292,8 @@ static void gap_params_init(void)
                                           strlen(DEVICE_NAME));
     APP_ERROR_CHECK(err_code);
 
-    /* YOUR_JOB: Use an appearance value matching the application's use case.
-       err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_);
-       APP_ERROR_CHECK(err_code); */
+       err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_UNKNOWN);
+       APP_ERROR_CHECK(err_code);
 
     memset(&gap_conn_params, 0, sizeof(gap_conn_params));
 
@@ -322,50 +325,41 @@ static void gatt_init(void)
  * @param[in]   p_yy_service   YY Service structure.
  * @param[in]   p_evt          Event received from the YY Service.
  *
- *
-static void on_yys_evt(ble_yy_service_t     * p_yy_service,
-                       ble_yy_service_evt_t * p_evt)
+ */
+static void on_alert_evt(ble_alert_t     * p_alert_service,
+                         ble_alert_evt_t * p_evt)
 {
     switch (p_evt->evt_type)
     {
-        case BLE_YY_NAME_EVT_WRITE:
-            APPL_LOG("[APPL]: charact written with value %s. ", p_evt->params.char_xx.value.p_str);
-            break;
 
         default:
             // No implementation needed.
             break;
     }
 }
-*/
+
 
 /**@brief Function for initializing services that will be used by the application.
  */
 static void services_init(void)
 {
-    /* YOUR_JOB: Add code to initialize the services used by the application.
+    /* initialize the services used by the application. */
        ret_code_t                         err_code;
-       ble_xxs_init_t                     xxs_init;
-       ble_yys_init_t                     yys_init;
+       ble_alert_init_t                   alert_init;
 
-       // Initialize XXX Service.
-       memset(&xxs_init, 0, sizeof(xxs_init));
+       // Initialize Alert Service.
+       memset(&alert_init, 0, sizeof(alert_init));
 
-       xxs_init.evt_handler                = NULL;
-       xxs_init.is_xxx_notify_supported    = true;
-       xxs_init.ble_xx_initial_value.level = 100;
+       alert_init.evt_handler                = on_alert_evt;
+       alert_init.support_notification       = false;
+       alert_init.alert_level_char_attr_md.read_perm.lv = 1;
+       alert_init.alert_level_char_attr_md.read_perm.sm = 1;
 
-       err_code = ble_bas_init(&m_xxs, &xxs_init);
+
+
+       err_code = ble_alert_init(&m_alert, &alert_init);
        APP_ERROR_CHECK(err_code);
 
-       // Initialize YYY Service.
-       memset(&yys_init, 0, sizeof(yys_init));
-       yys_init.evt_handler                  = on_yys_evt;
-       yys_init.ble_yy_initial_value.counter = 0;
-
-       err_code = ble_yy_service_init(&yys_init, &yy_init);
-       APP_ERROR_CHECK(err_code);
-     */
 }
 
 
@@ -484,7 +478,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     }
 }
 
-
+#if 0
 /**@brief Function for handling BLE events.
  *
  * @param[in]   p_ble_evt   Bluetooth stack event.
@@ -572,12 +566,15 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             }
         } break; // BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST
 
-        default:
+       case BLE_GATTS_EVT_WRITE:
+//             on_write(p_ble_evt);
+             break;
+       default:
             // No implementation needed.
             break;
     }
 }
-
+#endif
 
 /**@brief Function for initializing the BLE stack.
  *
@@ -601,7 +598,7 @@ static void ble_stack_init(void)
     APP_ERROR_CHECK(err_code);
 
     // Register a handler for BLE events.
-    NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_evt_handler, NULL);
+    NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_alert_on_ble_evt, NULL);
 }
 
 
@@ -701,6 +698,9 @@ static void advertising_init(void)
 
     memset(&init, 0, sizeof(init));
 
+    m_adv_uuids[0].type = m_alert_srv_uuid.type;
+    m_adv_uuids[0].uuid = m_alert_srv_uuid.uuid;
+
     init.advdata.name_type               = BLE_ADVDATA_FULL_NAME;
     init.advdata.include_appearance      = true;
     init.advdata.flags                   = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
@@ -790,8 +790,8 @@ int main(void)
     ble_stack_init();
     gap_params_init();
     gatt_init();
-    advertising_init();
     services_init();
+    advertising_init();
     conn_params_init();
     peer_manager_init();
 
