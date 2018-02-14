@@ -50,7 +50,6 @@ SRC_FILES += \
   $(PROJ_DIR)/ble_alert.c \
   $(PROJ_DIR)/alert_timer.c \
   $(PROJ_DIR)/timeslot.c \
-  $(PROJ_DIR)/ibeacon.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_Syscalls_GCC.c \
   $(SDK_ROOT)/external/segger_rtt/SEGGER_RTT_printf.c \
