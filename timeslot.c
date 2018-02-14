@@ -14,7 +14,13 @@
 
 #define RADIO_DEFAULT_ADDRESS           (0x8E89BED6)
 static uint32_t         m_alt_aa = RADIO_DEFAULT_ADDRESS;
-#if 0
+
+
+#define BLE_ADDRESS 0x8E89BED6UL
+#define BLE_PREFIX_SIZE 9
+#define BLE_POSTFIX (BLE_PREFIX_SIZE+2)
+
+
 static const uint8_t g_ibeacon_pkt[] = {
   /* iBeacon packet */
     26, 0xFF, 0x4C, 0x00, 0x02, 0x15,
@@ -24,9 +30,10 @@ static const uint8_t g_ibeacon_pkt[] = {
         0x00, 0x00,
         0xC5
 };
-#endif
+static uint8_t g_pkt_buffer[64];
+static uint32_t g_uid = BLE_ADDRESS;
 
-#define APP_BEACON_INFO_LENGTH          0x17                              /**< Total length of information advertised by the Beacon. */
+#define APP_BEACON_INFO_LENGTH          25                              /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH             0x15                              /**< Length of manufacturer specific data in the advertisement. */
 #define APP_DEVICE_TYPE                 0x02                              /**< 0x02 refers to Beacon. */
 #define APP_MEASURED_RSSI               0xC3                              /**< The Beacon's measured RSSI at 1 meter distance in dBm. */
@@ -37,7 +44,7 @@ static const uint8_t g_ibeacon_pkt[] = {
                                         0x45, 0x56, 0x67, 0x78, \
                                         0x89, 0x9a, 0xab, 0xbc, \
                                         0xcd, 0xde, 0xef, 0xf0            /**< Proprietary UUID for Beacon. */
-
+#if 0
 static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH+1] =                    /**< Information advertised by the Beacon. */
 {
     APP_BEACON_INFO_LENGTH,
@@ -51,6 +58,7 @@ static uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH+1] =                    /**<
     APP_MEASURED_RSSI    // Manufacturer specific information. The Beacon's measured TX power in
                          // this implementation.
 };
+#endif
 
 #if 0
 typedef struct {
@@ -77,35 +85,64 @@ static bool                 m_end_timer_triggered       = false; /** The timeslo
 
 
 void send_packet() {
-  NRF_RADIO->SHORTS = RADIO_SHORTS_READY_START_Msk | RADIO_SHORTS_END_DISABLE_Msk | RADIO_SHORTS_ADDRESS_RSSISTART_Msk;
-  NRF_RADIO->PACKETPTR = (uint32_t) m_beacon_info;
+  //NRF_RADIO->SHORTS = RADIO_SHORTS_READY_START_Msk | RADIO_SHORTS_END_DISABLE_Msk | RADIO_SHORTS_ADDRESS_RSSISTART_Msk;
+  /* BLE header */
+  g_pkt_buffer[0] = 0x42;
+
+  /* add MAC address */
+  g_pkt_buffer[2] = (uint8_t)(g_uid>>24);
+  g_pkt_buffer[3] = (uint8_t)(g_uid>>16);
+  g_pkt_buffer[4] = (uint8_t)(g_uid>> 8);
+  g_pkt_buffer[5] = (uint8_t)(g_uid>> 0);
+  g_pkt_buffer[6] = 0;
+  g_pkt_buffer[7] = 0;
+
+  /* No BT/EDR - Tx only */
+  g_pkt_buffer[8] = 2;
+  g_pkt_buffer[9] = 0x01;
+  g_pkt_buffer[10]= 0x04;
+
+  /* advertise guid */
+  /* append iBeacon GUID */
+  g_pkt_buffer[ 1]= BLE_PREFIX_SIZE+sizeof(g_ibeacon_pkt);
+  memcpy(&g_pkt_buffer[BLE_POSTFIX], &g_ibeacon_pkt, sizeof(g_ibeacon_pkt));
+  /* set angle & battery voltage as minor */
+  g_pkt_buffer[BLE_POSTFIX+sizeof(g_ibeacon_pkt)-3] = 0;
+  g_pkt_buffer[BLE_POSTFIX+sizeof(g_ibeacon_pkt)-2] = 0;
+
+  NRF_RADIO->PACKETPTR = (uint32_t) g_pkt_buffer;
   NRF_RADIO->INTENSET = RADIO_INTENSET_END_Msk;
   NRF_RADIO->PREFIX0 |= (((m_alt_aa >> 24) << 8) & 0x0000FF00);
   NRF_RADIO->BASE1    = ((m_alt_aa <<  8) & 0xFFFFFF00);
 
       //NRF_RADIO->TXADDRESS = p_evt->access_address;
-      NRF_RADIO->TXPOWER  = RADIO_TXPOWER_TXPOWER_Pos4dBm; // 0dbm
-
+      //NRF_RADIO->TXPOWER  = RADIO_TXPOWER_TXPOWER_Pos4dBm; // 0dbm
       // send the packet:
       NRF_RADIO->EVENTS_READY = 0U;
+      NRF_RADIO->EVENTS_DISABLED = 0U;
       NRF_RADIO->TASKS_TXEN   = 1;
 
-      while (NRF_RADIO->EVENTS_READY == 0U)
-      {
+      return;
+#if 0
+      while (NRF_RADIO->STATE != RADIO_STATE_STATE_TxIdle) {
           // wait
       }
+
       NRF_RADIO->EVENTS_END  = 0U;
       NRF_RADIO->TASKS_START = 1U;
 
       while (NRF_RADIO->EVENTS_END == 0U)
       {
           // wait
+          break;
       }
 
-      uint32_t err_code = bsp_indication_set(BSP_INDICATE_SENT_OK);
-      NRF_LOG_INFO("The packet was sent");
-      APP_ERROR_CHECK(err_code);
-
+      //uint32_t err_code = bsp_indication_set(BSP_INDICATE_SENT_OK);
+      //NRF_LOG_INFO("The packet was sent");
+      //APP_ERROR_CHECK(err_code);
+      while (NRF_RADIO->STATE != RADIO_STATE_STATE_TxIdle) {
+           // wait
+      }
       NRF_RADIO->EVENTS_DISABLED = 0U;
       // Disable radio
       NRF_RADIO->TASKS_DISABLE = 1U;
@@ -114,17 +151,21 @@ void send_packet() {
       {
           // wait
       }
+#endif
 }
 
 
 void radio_init()
 {
+#ifdef MESH
     /* Reset all states in the radio peripheral */
     NRF_RADIO->POWER            = ((RADIO_POWER_POWER_Disabled << RADIO_POWER_POWER_Pos) & RADIO_POWER_POWER_Msk);
     NRF_RADIO->POWER            = ((RADIO_POWER_POWER_Enabled  << RADIO_POWER_POWER_Pos) & RADIO_POWER_POWER_Msk);
 
     /* Set radio configuration parameters */
-    NRF_RADIO->TXPOWER      = ((RADIO_TXPOWER_TXPOWER_0dBm << RADIO_TXPOWER_TXPOWER_Pos) & RADIO_TXPOWER_TXPOWER_Msk);
+    uint32_t powerold = NRF_RADIO->TXPOWER;
+    NRF_RADIO->TXPOWER = powerold;
+    //NRF_RADIO->TXPOWER      = ((RADIO_TXPOWER_TXPOWER_Neg4dBm << RADIO_TXPOWER_TXPOWER_Pos) & RADIO_TXPOWER_TXPOWER_Msk);
     NRF_RADIO->MODE       = ((RADIO_MODE_MODE_Ble_1Mbit << RADIO_MODE_MODE_Pos) & RADIO_MODE_MODE_Msk);
 
     NRF_RADIO->FREQUENCY      = 2;          // Frequency bin 2, 2402MHz, channel 37.
@@ -163,6 +204,32 @@ void radio_init()
     NRF_RADIO->CRCINIT = ((0x555555 << RADIO_CRCINIT_CRCINIT_Pos) & RADIO_CRCINIT_CRCINIT_Msk);    // Initial value of CRC
     /* Lock interframe spacing, so that the radio won't send too soon / start RX too early */
     NRF_RADIO->TIFS = 148;
+#else
+    NRF_RADIO->MODE = RADIO_MODE_MODE_Ble_1Mbit << RADIO_MODE_MODE_Pos;
+    NRF_RADIO->TXPOWER = RADIO_TXPOWER_TXPOWER_Pos4dBm;
+    NRF_RADIO->TXADDRESS = 0;
+    NRF_RADIO->PREFIX0 = ((BLE_ADDRESS>>24) & RADIO_PREFIX0_AP0_Msk);
+    NRF_RADIO->BASE0 = (BLE_ADDRESS<<8);
+    NRF_RADIO->RXADDRESSES = 0;
+    NRF_RADIO->PCNF0 =
+      (1 << RADIO_PCNF0_S0LEN_Pos)|
+      (8 << RADIO_PCNF0_LFLEN_Pos);
+    NRF_RADIO->PCNF1 =
+      (RADIO_PCNF1_WHITEEN_Enabled << RADIO_PCNF1_WHITEEN_Pos)|
+      (0xFF                        << RADIO_PCNF1_MAXLEN_Pos)|
+      (3 << RADIO_PCNF1_BALEN_Pos);
+    NRF_RADIO->CRCCNF =
+      (RADIO_CRCCNF_LEN_Three << RADIO_CRCCNF_LEN_Pos) |
+      (1 << RADIO_CRCCNF_SKIP_ADDR_Pos);
+    NRF_RADIO->CRCINIT = 0x00555555UL;
+    NRF_RADIO->CRCPOLY = 0x0100065BUL;
+    NRF_RADIO->SHORTS = (
+      (RADIO_SHORTS_READY_START_Enabled       << RADIO_SHORTS_READY_START_Pos) |
+      (RADIO_SHORTS_END_DISABLE_Enabled       << RADIO_SHORTS_END_DISABLE_Pos)
+    );
+    NRF_RADIO->FREQUENCY      = 2;          // Frequency bin 2, 2402MHz, channel 37.
+    NRF_RADIO->DATAWHITEIV      = 37;         // NOTE: This value needs to correspond to the frequency being used
+#endif
 
     NRF_RADIO->EVENTS_END = 0;
 
@@ -178,7 +245,6 @@ static void timeslot_end(void)
     m_is_in_callback = false;
     m_end_timer_triggered = false;
 
-#ifdef NRF52
     NRF_TIMER0->TASKS_STOP = 0;
     NRF_TIMER0->TASKS_SHUTDOWN = 1;
     for (uint32_t i = 0; i < 6; i++)
@@ -188,7 +254,6 @@ static void timeslot_end(void)
     }
     NRF_TIMER0->INTENCLR = 0xFFFFFFFF;
     NVIC_ClearPendingIRQ(TIMER0_IRQn);
-#endif
 }
 
 uint32_t timeslot_init(nrf_clock_lf_cfg_t lfclksrc)
@@ -202,7 +267,7 @@ uint32_t timeslot_init(nrf_clock_lf_cfg_t lfclksrc)
  */
 uint32_t request_next_event_earliest(void)
 {
-    m_slot_length                                  = 15000;
+    m_slot_length                                  = 5000;
     m_timeslot_request.request_type                = NRF_RADIO_REQ_TYPE_EARLIEST;
     m_timeslot_request.params.earliest.hfclk       = NRF_RADIO_HFCLK_CFG_XTAL_GUARANTEED;
     m_timeslot_request.params.earliest.priority    = NRF_RADIO_PRIORITY_NORMAL;
@@ -216,7 +281,7 @@ uint32_t request_next_event_earliest(void)
  */
 void configure_next_event_earliest(void)
 {
-    m_slot_length                                  = 15000;
+    m_slot_length                                  = 5000;
     m_timeslot_request.request_type                = NRF_RADIO_REQ_TYPE_EARLIEST;
     m_timeslot_request.params.earliest.hfclk       = NRF_RADIO_HFCLK_CFG_XTAL_GUARANTEED;
     m_timeslot_request.params.earliest.priority    = NRF_RADIO_PRIORITY_NORMAL;
@@ -229,7 +294,7 @@ void configure_next_event_earliest(void)
  */
 void configure_next_event_normal(void)
 {
-    m_slot_length                                 = 15000;
+    m_slot_length                                 = 5000;
     m_timeslot_request.request_type               = NRF_RADIO_REQ_TYPE_NORMAL;
     m_timeslot_request.params.normal.hfclk        = NRF_RADIO_HFCLK_CFG_XTAL_GUARANTEED;
     m_timeslot_request.params.normal.priority     = NRF_RADIO_PRIORITY_HIGH;
@@ -290,6 +355,10 @@ nrf_radio_signal_callback_return_param_t * radio_callback(uint8_t signal_type)
         case NRF_RADIO_CALLBACK_SIGNAL_TYPE_RADIO:
             signal_callback_return_param.params.request.p_next = NULL;
             signal_callback_return_param.callback_action = NRF_RADIO_SIGNAL_CALLBACK_ACTION_NONE;
+            if (NRF_RADIO->EVENTS_END) {
+                NRF_RADIO->EVENTS_END = 0;
+            }
+
             //send_packet();
             break;
 

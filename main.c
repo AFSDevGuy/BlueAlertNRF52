@@ -880,7 +880,7 @@ int main(void)
     NRF_LOG_INFO("BlueAlert started.");
     application_timers_start();
 
-    service_advertising_start(erase_bonds);
+    //service_advertising_start(erase_bonds);
 
     // Enter main loop.
     for (;;)

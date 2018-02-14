@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define ALERT_TIMER_INTERVAL 100 //10.0 Sec
-#define ALERT_LED 1
+#define ALERT_LED 2
 
 void alert_timer_timeout_handler(void *p_context);
 void alert_sound();
