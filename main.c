@@ -81,7 +81,7 @@
 
 #include "ble_alert.h"
 #include "alert_timer.h"
-#include "timeslot.h"
+#include "advertiser_beacon.h"
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2    /**< Reply when unsupported features are requested. */
 
@@ -366,8 +366,45 @@ static void services_init(void)
        APP_ERROR_CHECK(err_code);
 
 }
+#define APP_COMPANY_IDENTIFIER               0x0059                                     /**< Company identifier for Nordic Semiconductor ASA. as per www.bluetooth.org. */
 
+#define BEACON_UUID 0xff, 0xfe, 0x2d, 0x12, 0x1e, 0x4b, 0x0f, 0xa4,\
+                    0x99, 0x4e, 0xce, 0xb5, 0x31, 0xf4, 0x05, 0x45
+#define BEACON_ADV_INTERVAL                  1000                                       /**< The Beacon's advertising interval, in milliseconds*/
+#define BEACON_MAJOR                         0x1234                                     /**< The Beacon's Major*/
+#define BEACON_MINOR                         0x5678                                     /**< The Beacon's Minor*/
+#define BEACON_RSSI                          0xAF                                       /**< The Beacon's measured RSSI at 1 meter distance in dBm. */
 
+static ble_beacon_init_t beacon_init;
+/**@brief Function for handling a BeaconAdvertiser error.
+ *
+ * @param[in]   nrf_error   Error code containing information about what went wrong.
+ */
+static void beacon_advertiser_error_handler(uint32_t nrf_error)
+{
+    APP_ERROR_HANDLER(nrf_error);
+}
+
+/**@brief Function for initializing Beacon advertiser.
+ */
+static void beacon_adv_init(void)
+{
+    static uint8_t beacon_uuid[] = {BEACON_UUID};
+
+    memcpy(beacon_init.uuid.uuid128, beacon_uuid, sizeof(beacon_uuid));
+    beacon_init.adv_interval  = BEACON_ADV_INTERVAL;
+    beacon_init.major         = BEACON_MAJOR;
+    beacon_init.minor         = BEACON_MINOR;
+    beacon_init.manuf_id      = APP_COMPANY_IDENTIFIER;
+    beacon_init.rssi          = BEACON_RSSI;
+    beacon_init.error_handler = beacon_advertiser_error_handler;
+
+    uint32_t err_code = sd_ble_gap_addr_get(&beacon_init.beacon_addr);
+    beacon_init.beacon_addr.addr[0]++;
+    APP_ERROR_CHECK(err_code);
+
+    app_beacon_init(&beacon_init);
+}
 /**@brief Function for handling the Connection Parameters Module.
  *
  * @details This function will be called for all events in the Connection Parameters Module which
@@ -874,12 +911,14 @@ int main(void)
     service_advertising_init();
     conn_params_init();
     peer_manager_init();
-    timeslot_sd_init();
+    beacon_adv_init();
+    //timeslot_sd_init();
 
     // Start execution.
     NRF_LOG_INFO("BlueAlert started.");
+    service_advertising_start(erase_bonds);
     application_timers_start();
-
+    app_beacon_start();
     //service_advertising_start(erase_bonds);
 
     // Enter main loop.
