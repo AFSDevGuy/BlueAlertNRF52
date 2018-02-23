@@ -23,11 +23,13 @@ void alert_timer_timeout_handler(void *p_context) {
     if (alert_state != 0) {
         // Sound alert
         bsp_board_led_on(ALERT_LED);
+        nrf_gpio_pin_clear(31);
         if (alert_time > 0) {
             alert_time --;
         } else {
             bsp_board_led_off(ALERT_LED);
             alert_state = 0;
+            nrf_gpio_pin_set(31);
         }
     }
     return;

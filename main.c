@@ -366,11 +366,12 @@ static void services_init(void)
        APP_ERROR_CHECK(err_code);
 
 }
-#define APP_COMPANY_IDENTIFIER               0x0059                                     /**< Company identifier for Nordic Semiconductor ASA. as per www.bluetooth.org. */
+//#define APP_COMPANY_IDENTIFIER               0x0059                                     /**< Company identifier for Nordic Semiconductor ASA. as per www.bluetooth.org. */
+#define APP_COMPANY_IDENTIFIER               0x004C                                     /**< Company identifier for iBeacon */
 
 #define BEACON_UUID 0xff, 0xfe, 0x2d, 0x12, 0x1e, 0x4b, 0x0f, 0xa4,\
                     0x99, 0x4e, 0xce, 0xb5, 0x31, 0xf4, 0x05, 0x45
-#define BEACON_ADV_INTERVAL                  1000                                       /**< The Beacon's advertising interval, in milliseconds*/
+#define BEACON_ADV_INTERVAL                  500                                      /**< The Beacon's advertising interval, in milliseconds*/
 #define BEACON_MAJOR                         0x1234                                     /**< The Beacon's Major*/
 #define BEACON_MINOR                         0x5678                                     /**< The Beacon's Minor*/
 #define BEACON_RSSI                          0xAF                                       /**< The Beacon's measured RSSI at 1 meter distance in dBm. */
@@ -535,6 +536,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
         case BLE_GAP_EVT_DISCONNECTED:
             NRF_LOG_INFO("Disconnected.");
             // LED indication will be changed when advertising starts.
+            pm_peers_delete();
             break;
 
         case BLE_GAP_EVT_CONNECTED:
@@ -542,6 +544,8 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+            // Send "service changed" indication to disable iOS caching of services/peripherals
+            sd_ble_gatts_service_changed (m_conn_handle,0x000C,0xFFFF);
             break;
 
 #ifndef S140
@@ -850,6 +854,9 @@ static void buttons_leds_init(bool * p_erase_bonds)
 
     err_code = bsp_btn_ble_init(NULL, &startup_event);
     APP_ERROR_CHECK(err_code);
+
+    nrf_gpio_cfg_output (31);
+    nrf_gpio_pin_set (31);
 
     *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
 }
