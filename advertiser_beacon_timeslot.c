@@ -38,6 +38,10 @@
 
 #define BEACON_SLOT_LENGTH             5500
 
+#define BEACON_1                        1
+#define BEACON_2						2
+
+
 static struct
 {
     ble_uuid128_t           uuid;                               /** 128 proprietary service UUID to include in advertisement packets*/
@@ -83,11 +87,18 @@ uint32_t m_request_earliest(enum NRF_RADIO_PRIORITY priority)
     return sd_radio_request(&m_beacon.timeslot_request);
 }
 
-static uint8_t * m_get_adv_packet(void)
+static uint8_t * m_get_adv_packet(uint8_t beacon_mode)
 {
     static uint8_t adv_pdu[40];
     uint8_t packet_len_start_idx, manuf_data_len_start_idx, beacon_data_len_start_idx;
     uint8_t offset    = 0;
+    uint8_t beacon_address[BLE_GAP_ADDR_LEN];
+
+    memcpy(beacon_address,m_beacon.beacon_addr.addr, BLE_GAP_ADDR_LEN);
+    //TODO: adjust the beacon address as required
+    if (beacon_mode != BEACON_1) {
+    	beacon_address[0]++;
+    }
 
     // Constructing header
     adv_pdu[offset]    = BLE_GAP_ADV_TYPE_ADV_SCAN_IND;    // Advertisement type ADV_NONCONN_IND
@@ -97,7 +108,7 @@ static uint8_t * m_get_adv_packet(void)
     packet_len_start_idx = offset;
 
     // Constructing base advertising packet
-    memcpy(&adv_pdu[offset], m_beacon.beacon_addr.addr, BLE_GAP_ADDR_LEN);
+    memcpy(&adv_pdu[offset], beacon_address, sizeof(beacon_address));
     offset += BLE_GAP_ADDR_LEN;
     
     // Adding advertising data: Flags
@@ -117,7 +128,7 @@ static uint8_t * m_get_adv_packet(void)
     beacon_data_len_start_idx = offset;
     memcpy(&adv_pdu[offset], &m_beacon.uuid, sizeof(ble_uuid128_t));
     offset += sizeof(ble_uuid128_t);
-    offset += uint16_encode(m_beacon.major, &adv_pdu[offset]);
+    offset += uint16_encode(beacon_mode==BEACON_1?m_beacon.major:m_beacon.major+0x100, &adv_pdu[offset]);
     offset += uint16_encode(m_beacon.minor, &adv_pdu[offset]);
     adv_pdu[offset++] = m_beacon.rssi;
     
@@ -148,9 +159,9 @@ static void m_set_adv_ch(uint32_t channel)
     }
 }
 
-static void m_configure_radio()
+static void m_configure_radio(uint8_t beacon_mode)
 {
-    uint8_t * p_adv_pdu = m_get_adv_packet();
+    uint8_t * p_adv_pdu = m_get_adv_packet(beacon_mode);
 
     NRF_RADIO->POWER        = 1;
     NRF_RADIO->PCNF0        =   (((1UL) << RADIO_PCNF0_S0LEN_Pos                               ) & RADIO_PCNF0_S0LEN_Msk)
@@ -173,20 +184,28 @@ static void m_configure_radio()
     NRF_RADIO->BASE0        = 0x89bed600; //access_addr[0:3]
     NRF_RADIO->CRCINIT      = 0x00555555;
     NRF_RADIO->PACKETPTR    = (uint32_t) p_adv_pdu;
-    NRF_RADIO->TXPOWER = (RADIO_TXPOWER_TXPOWER_Neg40dBm << RADIO_TXPOWER_TXPOWER_Pos)&RADIO_TXPOWER_TXPOWER_Msk;
+    // Choose appropriate power level
+    uint8_t transmitPower = (beacon_mode==BEACON_1)?RADIO_TXPOWER_TXPOWER_Neg40dBm:RADIO_TXPOWER_TXPOWER_Neg20dBm;
+    NRF_RADIO->TXPOWER = (transmitPower<< RADIO_TXPOWER_TXPOWER_Pos)&RADIO_TXPOWER_TXPOWER_Msk;
     
     NVIC_EnableIRQ(RADIO_IRQn);
 }
 
 void m_handle_start(void)
 {
+	static uint8_t beacon_mode = BEACON_1;
     // Configure TX_EN on TIMER EVENT_0
     NRF_PPI->CH[8].TEP    = (uint32_t)(&NRF_RADIO->TASKS_TXEN);
     NRF_PPI->CH[8].EEP    = (uint32_t)(&NRF_TIMER0->EVENTS_COMPARE[0]);
     NRF_PPI->CHENSET      = (1 << 8);
     
     // Configure and initiate radio
-    m_configure_radio();
+    m_configure_radio(beacon_mode);
+    if(beacon_mode==BEACON_1) {
+    	beacon_mode=BEACON_2;
+    } else {
+    	beacon_mode=BEACON_1;
+    }
     NRF_RADIO->TASKS_DISABLE = 1;
 }
 
@@ -304,7 +323,7 @@ void app_beacon_on_sys_evt(uint32_t event)
 void app_beacon_init(ble_beacon_init_t * p_init)
 {
     memcpy(&m_beacon.uuid, &p_init->uuid, sizeof(p_init->uuid));
-    m_beacon.adv_interval = p_init->adv_interval;
+    m_beacon.adv_interval = p_init->adv_interval/2;
     m_beacon.major        = p_init->major;
     m_beacon.minor        = p_init->minor;
     m_beacon.slot_length  = BEACON_SLOT_LENGTH;
